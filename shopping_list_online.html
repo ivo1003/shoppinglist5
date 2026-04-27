@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shopping List</title>
+    <style>
+        body { font-family: Arial, sans-serif; background: #f9f9f9; margin: 0; padding: 0; }
+        .container { max-width: 400px; margin: 40px auto; background: #fff; padding: 24px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; }
+        ul { list-style: none; padding: 0; }
+        li { padding: 8px 0; border-bottom: 1px solid #eee; display: flex; align-items: center; }
+        .item-content { flex: 1; display: flex; align-items: center; }
+        .item-actions { display: flex; gap: 6px; }
+        form { display: flex; margin-top: 16px; }
+        input[type="text"] { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 8px 16px; margin-left: 8px; border: none; background: #0078d7; color: #fff; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #005fa3; }
+        .strikethrough { text-decoration: line-through; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Shopping List</h1>
+        <h2>Food</h2>
+        <ul id="food-list"></ul>
+        <form id="food-form">
+            <input type="text" id="food-item" placeholder="Add food item..." required />
+            <button type="submit">Add</button>
+        </form>
+        <h2>Household</h2>
+        <ul id="household-list"></ul>
+        <form id="household-form">
+            <input type="text" id="household-item" placeholder="Add household item..." required />
+            <button type="submit">Add</button>
+        </form>
+    </div>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+    <script>
+        // Firebase config from your project
+        const firebaseConfig = {
+            apiKey: "AIzaSyBQq5c4e56yuPBjAcbPhpPNkvFUAo4VWH4",
+            authDomain: "shopping-list-f230a.firebaseapp.com",
+            databaseURL: "https://shopping-list-f230a-default-rtdb.europe-west1.firebasedatabase.app",
+            projectId: "shopping-list-f230a",
+            storageBucket: "shopping-list-f230a.appspot.com",
+            messagingSenderId: "841316179774",
+            appId: "1:841316179774:web:dfe71c6e01744dfbce166f"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        function setupSection(formId, listId, inputId, dbKey) {
+            const form = document.getElementById(formId);
+            const list = document.getElementById(listId);
+            const itemInput = document.getElementById(inputId);
+
+            // Listen for changes in the database
+            db.ref(dbKey).on('value', snapshot => {
+                const items = snapshot.val() ? Object.entries(snapshot.val()).map(([id, item]) => ({ id, ...item })) : [];
+                renderItems(items);
+            });
+
+            function renderItems(items) {
+                list.innerHTML = '';
+                const unchecked = items.filter(i => !i.checked);
+                const checked = items.filter(i => i.checked);
+                function renderList(arr) {
+                    arr.forEach(item => {
+                        const li = document.createElement('li');
+                        // Content container
+                        const contentDiv = document.createElement('div');
+                        contentDiv.className = 'item-content';
+                        // Actions container
+                        const actionsDiv = document.createElement('div');
+                        actionsDiv.className = 'item-actions';
+
+                        const checkbox = document.createElement('input');
+                        checkbox.type = 'checkbox';
+                        checkbox.style.marginRight = '8px';
+                        checkbox.checked = !!item.checked;
+                        const span = document.createElement('span');
+                        span.textContent = item.text;
+                        if (item.checked) span.classList.add('strikethrough');
+                        checkbox.addEventListener('change', function() {
+                            db.ref(dbKey + '/' + item.id).update({ checked: checkbox.checked });
+                        });
+
+                        // Long-press to delete (1 second)
+                        let pressTimer = null;
+                        li.addEventListener('mousedown', function(e) {
+                            pressTimer = setTimeout(function() {
+                                if (confirm('Delete this item?')) {
+                                    db.ref(dbKey + '/' + item.id).remove();
+                                }
+                            }, 1000);
+                        });
+                        li.addEventListener('mouseup', function(e) {
+                            clearTimeout(pressTimer);
+                        });
+                        li.addEventListener('mouseleave', function(e) {
+                            clearTimeout(pressTimer);
+                        });
+
+                        contentDiv.appendChild(checkbox);
+                        contentDiv.appendChild(span);
+
+                        // Edit button
+                        const editBtn = document.createElement('button');
+                        editBtn.textContent = 'Edit';
+                        editBtn.style.background = '#ffc107';
+                        editBtn.style.border = 'none';
+                        editBtn.style.color = '#333';
+                        editBtn.style.borderRadius = '4px';
+                        editBtn.style.cursor = 'pointer';
+                        editBtn.style.padding = '4px 8px';
+                        editBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            const newValue = prompt('Edit item:', item.text);
+                            if (newValue !== null && newValue.trim() !== '' && newValue !== item.text) {
+                                db.ref(dbKey + '/' + item.id).update({ text: newValue.trim() });
+                            }
+                        });
+                        actionsDiv.appendChild(editBtn);
+
+                        // Delete button
+                        const delBtn = document.createElement('button');
+                        delBtn.textContent = 'Del';
+                        delBtn.style.background = '#dc3545';
+                        delBtn.style.border = 'none';
+                        delBtn.style.color = '#fff';
+                        delBtn.style.borderRadius = '4px';
+                        delBtn.style.cursor = 'pointer';
+                        delBtn.style.padding = '4px 8px';
+                        delBtn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            if (confirm('Delete this item?')) {
+                                db.ref(dbKey + '/' + item.id).remove();
+                            }
+                        });
+                        actionsDiv.appendChild(delBtn);
+
+                        li.appendChild(contentDiv);
+                        li.appendChild(actionsDiv);
+                        list.appendChild(li);
+                    });
+                }
+                renderList(unchecked);
+                renderList(checked);
+            }
+
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const value = itemInput.value.trim();
+                if (value) {
+                    db.ref(dbKey).push({ text: value, checked: false });
+                    itemInput.value = '';
+                }
+            });
+        }
+        setupSection('food-form', 'food-list', 'food-item', 'shoppingListFood');
+        setupSection('household-form', 'household-list', 'household-item', 'shoppingListHousehold');
+    </script>
+</body>
+</html>
